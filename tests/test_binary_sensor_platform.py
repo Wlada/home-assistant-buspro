@@ -27,6 +27,7 @@ def _load_binary_sensor_platform():
     )
     const = types.ModuleType("homeassistant.const")
     core = types.ModuleType("homeassistant.core")
+    event = types.ModuleType("homeassistant.helpers.event")
     custom_components = types.ModuleType("custom_components")
     custom_components.__path__ = []
     buspro_package = types.ModuleType("custom_components.buspro")
@@ -48,8 +49,15 @@ def _load_binary_sensor_platform():
     }.items():
         setattr(const, name, value)
     core.callback = lambda function: function
+    event.async_track_time_interval = lambda *args, **kwargs: lambda: None
 
     class BinarySensorEntity:
+        async def async_added_to_hass(self):
+            return None
+
+        def async_on_remove(self, callback):
+            self.remove_callback = callback
+
         def async_write_ha_state(self):
             return None
 
@@ -65,6 +73,7 @@ def _load_binary_sensor_platform():
             "homeassistant.helpers.config_validation": config_validation,
             "homeassistant.const": const,
             "homeassistant.core": core,
+            "homeassistant.helpers.event": event,
             "custom_components": custom_components,
             "custom_components.buspro": buspro_package,
         }
@@ -130,6 +139,69 @@ class BusproBinarySensorPlatformTests(unittest.TestCase):
         entity._hass.data[BinarySensorPlatform.DATA_BUSPRO].connected = False
 
         self.assertFalse(entity.available)
+
+    def test_dry_contact_update_requests_fresh_status(self):
+        calls = []
+
+        async def read_sensor_status():
+            calls.append("read")
+
+        device = SimpleNamespace(
+            name="Test smoke detector",
+            device_identifier="test-smoke",
+            register_device_updated_cb=lambda callback: None,
+            read_sensor_status=read_sensor_status,
+        )
+        hass = SimpleNamespace(
+            data={
+                BinarySensorPlatform.DATA_BUSPRO: SimpleNamespace(
+                    connected=True
+                )
+            }
+        )
+        entity = BinarySensorPlatform.BusproBinarySensor(
+            hass,
+            device,
+            BinarySensorPlatform.CONF_DRY_CONTACT,
+            "smoke",
+            5,
+        )
+
+        asyncio.run(entity.async_update())
+
+        self.assertEqual(calls, ["read"])
+
+    def test_scan_interval_schedules_per_entity_refresh(self):
+        scheduled = {}
+
+        def track_interval(hass, action, interval, **kwargs):
+            scheduled.update(
+                hass=hass,
+                action=action,
+                interval=interval,
+                kwargs=kwargs,
+            )
+            return lambda: None
+
+        original = getattr(
+            BinarySensorPlatform,
+            "async_track_time_interval",
+            None,
+        )
+        BinarySensorPlatform.async_track_time_interval = track_interval
+        try:
+            entity = self.make_entity(True)
+            self.assertFalse(entity.should_poll)
+            asyncio.run(entity.async_added_to_hass())
+        finally:
+            if original is None:
+                del BinarySensorPlatform.async_track_time_interval
+            else:
+                BinarySensorPlatform.async_track_time_interval = original
+
+        self.assertEqual(scheduled["hass"], entity._hass)
+        self.assertEqual(scheduled["interval"].total_seconds(), 20)
+        self.assertTrue(scheduled["kwargs"]["cancel_on_shutdown"])
 
 
     def test_setup_passes_motion_type_as_diagnostic_role(self):

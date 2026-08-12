@@ -22,6 +22,7 @@ from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
 from homeassistant.core import callback
+from homeassistant.helpers.event import async_track_time_interval
 
 from datetime import timedelta
 from ..buspro import DATA_BUSPRO
@@ -143,10 +144,7 @@ class BusproBinarySensor(BinarySensorEntity):
         self._device = device
         self._device_class = device_class
         self._sensor_type = sensor_type
-        
-        self._should_poll = False
-        if scan_interval > 0:
-            self._should_poll = True
+        self._scan_interval = scan_interval
 
         self.async_register_callbacks()
 
@@ -161,14 +159,34 @@ class BusproBinarySensor(BinarySensorEntity):
 
         self._device.register_device_updated_cb(after_update_callback)
 
+    async def async_added_to_hass(self):
+        """Schedule per-entity polling when a scan interval is configured."""
+        await super().async_added_to_hass()
+        if self._scan_interval <= 0:
+            return
+
+        self.async_on_remove(
+            async_track_time_interval(
+                self._hass,
+                self._async_refresh,
+                timedelta(seconds=self._scan_interval),
+                name=f"Buspro binary sensor {self.name}",
+                cancel_on_shutdown=True,
+            )
+        )
+
+    async def _async_refresh(self, _now):
+        """Request fresh state at the configured interval."""
+        await self.async_update()
+
     @property
     def should_poll(self):
-        """No polling needed within Buspro."""
-        return self._should_poll
+        """Return false because polling is scheduled per entity."""
+        return False
 
     async def async_update(self, *args):
-        if self._sensor_type == CONF_UNIVERSAL_SWITCH or self._sensor_type == CONF_MOTION:
-            await self._device.read_sensor_status()
+        """Request the current state from the Buspro device."""
+        await self._device.read_sensor_status()
 
     @property
     def name(self):
