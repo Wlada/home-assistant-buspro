@@ -1,0 +1,110 @@
+activate_scene:
+  name: Activate scene
+  description: Activate an HDL Buspro scene.
+  fields:
+    address:
+      name: Device address
+      description: Two-byte Buspro address of the scene controller.
+      required: true
+      example: [1, 74]
+      selector:
+        object:
+    scene_address:
+      name: Scene address
+      description: Buspro area and scene number.
+      required: true
+      example: [3, 5]
+      selector:
+        object:
+
+send_message:
+  name: Send low-level message
+  description: >-
+    Send a supported raw Buspro command. Prefer entity controls or a narrower
+    service when possible.
+  fields:
+    address:
+      name: Target address
+      description: Two-byte Buspro target address.
+      required: true
+      example: [1, 74]
+      selector:
+        object:
+    operate_code:
+      name: Operate code
+      description: Two-byte Buspro operate code.
+      required: true
+      example: [227, 216]
+      selector:
+        object:
+    payload:
+      name: Payload
+      description: Buspro payload bytes.
+      required: true
+      example: [3, 1, 1]
+      selector:
+        object:
+
+set_universal_switch:
+  name: Set universal switch
+  description: Set an HDL Buspro universal switch state.
+  fields:
+    address:
+      name: Device address
+      description: Two-byte Buspro device address.
+      required: true
+      example: [1, 74]
+      selector:
+        object:
+    switch_number:
+      name: Switch number
+      description: Universal switch number.
+      required: true
+      example: 100
+      selector:
+        number:
+          min: 1
+          mode: box
+    status:
+      name: Status
+      description: Requested state, where 0 is off and 1 is on.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 1
+          mode: box
+
+set_panel_ac:
+  name: Set panel AC power
+  description: Set an AC channel power state through its Enviro panel.
+  fields:
+    address:
+      name: Panel address
+      description: Two-byte BusPro address of the Enviro panel.
+      required: true
+      example: [1, 49]
+      selector:
+        object:
+    channel:
+      name: AC channel
+      description: Positive Enviro AC channel number.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 1
+          mode: box
+    power:
+      name: Power
+      description: Requested power state, where 0 is off and 1 is on.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 1
+          mode: box
