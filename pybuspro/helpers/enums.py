@@ -71,6 +71,8 @@ class OperateCode(Enum):
     SingleChannelControlResponse = b'\x00\x32'
     ReadStatusOfChannels = b'\x00\x33'
     ReadStatusOfChannelsResponse = b'\x00\x34'
+    ReadActualStatusOfChannels = b'\x00\x38'
+    ReadActualStatusOfChannelsResponse = b'\x00\x39'
     SceneControl = b'\x00\x02'
     SceneControlResponse = b'\x00\x03'
     UniversalSwitchControl = b'\xE0\x1C'

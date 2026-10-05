@@ -1,6 +1,7 @@
 """Confirmed state and control for an Enviro floor-heating zone."""
 
 import logging
+from time import monotonic
 
 from .device import Device
 from .generic import Generic
@@ -25,6 +26,11 @@ _POWER_FIELD = 20
 _MODE_FIELD = 21
 _NORMAL_TEMPERATURE_FIELD = 25
 _STATUS_FIELDS = (_POWER_FIELD, _MODE_FIELD, _NORMAL_TEMPERATURE_FIELD)
+_OUTPUT_FEEDBACK_MAX_AGE = 90
+_OUTPUT_RESPONSE_SOURCES = {
+    OperateCode.ReadActualStatusOfChannelsResponse: "channel_actual",
+    OperateCode.ReadStatusOfChannelsResponse: "channel_target",
+}
 
 
 class PanelFloorHeatingDevice(Device):
@@ -76,7 +82,7 @@ class PanelFloorHeatingDevice(Device):
         self._day_temperature = None
         self._night_temperature = None
         self._away_temperature = None
-        self._actuator_is_on = None
+        self._output_snapshots = {}
 
         self._buspro.register_telegram_received_device_cb(
             self._panel_telegram_received_cb, self._panel_address
@@ -118,7 +124,30 @@ class PanelFloorHeatingDevice(Device):
 
     @property
     def actuator_is_on(self):
-        return self._actuator_is_on
+        return self.actuator_outputs.get(str(self._actuator_channel))
+
+    @property
+    def actuator_outputs(self):
+        """Fresh module outputs, without optimistic switch defaults."""
+        snapshot = self._fresh_output_snapshot()
+        return dict(snapshot[1]) if snapshot is not None else {}
+
+    @property
+    def actuator_feedback_source(self):
+        snapshot = self._fresh_output_snapshot()
+        return snapshot[0] if snapshot is not None else None
+
+    def _fresh_output_snapshot(self):
+        # Prefer actual output feedback. Older modules may only answer 0x0033,
+        # whose 0x0034 response is the channel target used by Buspro switches.
+        for source in ("channel_actual", "channel_target"):
+            snapshot = self._output_snapshots.get(source)
+            if (
+                snapshot is not None
+                and monotonic() - snapshot[0] < _OUTPUT_FEEDBACK_MAX_AGE
+            ):
+                return source, snapshot[1]
+        return None
 
     @property
     def min_temp(self):
@@ -168,9 +197,17 @@ class PanelFloorHeatingDevice(Device):
             await self._read_panel_field(
                 self._panel_address, field, self._panel_channel
             )
-        await self._read_panel_field(
-            self._actuator_address, _POWER_FIELD, self._actuator_channel
-        )
+        await self.read_actuator_status()
+
+    async def read_actuator_status(self):
+        """Read module outputs; these requests never enable any channel."""
+        for code in (
+            OperateCode.ReadActualStatusOfChannels,
+            OperateCode.ReadStatusOfChannels,
+        ):
+            await Generic(
+                self._buspro, self._actuator_address, [], code, self._name
+            ).run()
 
     async def _read_panel_field(self, address, field, channel):
         command = Generic(
@@ -286,21 +323,29 @@ class PanelFloorHeatingDevice(Device):
             self._call_device_updated()
 
     def _actuator_telegram_received_cb(self, telegram):
-        if telegram.operate_code not in (
-            _PANEL_FIELD_RESPONSE,
-            _PANEL_FIELD_READ_RESPONSE,
-        ):
+        # E3D9/E3DB field 20 means heating enabled, never valve output.
+        source = _OUTPUT_RESPONSE_SOURCES.get(telegram.operate_code)
+        if source is None or telegram.source_address != self._actuator_address:
             return
         payload = getattr(telegram, "payload", None)
-        if not isinstance(payload, (list, tuple)) or len(payload) < 3:
+        if not isinstance(payload, (list, tuple)) or not payload:
             return
-
-        field, value, channel = payload[:3]
-        if field != 20 or value not in (0, 1):
+        count = payload[0]
+        if type(count) is not int or not 1 <= count <= 255:
             return
-        if channel != self._actuator_channel:
+        if len(payload) != count + 1 or self._actuator_channel > count:
             return
-        self._set_confirmed_value("_actuator_is_on", value == 1)
+        if any(
+            type(value) is not int or not 0 <= value <= 100
+            for value in payload[1:]
+        ):
+            return
+        outputs = {
+            str(channel): level > 0
+            for channel, level in enumerate(payload[1:], 1)
+        }
+        self._output_snapshots[source] = (monotonic(), outputs)
+        self._call_device_updated()
 
     @staticmethod
     def _valid_temperature(value):

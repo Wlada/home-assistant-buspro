@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from time import time
 
 from .control import (
     _ReadSensorStatus,
@@ -52,6 +53,7 @@ class Sensor(Device):
         self._switch_number = switch_number
 
         self._current_temperature = None
+        self._temperature_received_at = None
         self._brightness = None
         self._humidity = None
         self._motion_sensor = None
@@ -231,9 +233,13 @@ class Sensor(Device):
                 return
             if payload[0] != self._channel_number:
                 return
+            if not isinstance(payload[1], int) or isinstance(payload[1], bool) or not 0 <= payload[1] <= 255:
+                return
             self._current_temperature = self._decode_signed_temperature(
                 payload[1]
             )
+            # Polling a cached value must not count as a fresh bus measurement.
+            self._temperature_received_at = time()
             self._call_device_updated()
 
 

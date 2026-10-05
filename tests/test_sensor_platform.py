@@ -87,6 +87,14 @@ BusproSensor = SensorPlatform.BusproSensor
 
 
 class BusproSensorPlatformTests(unittest.TestCase):
+    def test_temperature_age_comes_from_received_bus_packet(self):
+        entity = self.make_entity("temperature")
+        entity._device._temperature_received_at = 1234.5
+        self.assertEqual(entity.extra_state_attributes, {"state_class": "measurement", "buspro_temperature_received_at": 1234.5})
+        entity._temperature = 24
+        self.assertEqual(entity.extra_state_attributes["buspro_temperature_received_at"], 1234.5)
+        self.assertEqual(self.make_entity("humidity").extra_state_attributes, {"state_class": "measurement"})
+
     def make_entity(self, sensor_type):
         device = SimpleNamespace(
             name="Test sensor",

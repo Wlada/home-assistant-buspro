@@ -213,9 +213,12 @@ class BusproSensor(Entity):
     @property
     def extra_state_attributes(self):
         """Return the state attributes."""
-        return {
-            'state_class': "measurement"
-        }
+        attributes = {"state_class": "measurement"}
+        if self._sensor_type == TEMPERATURE:
+            attributes["buspro_temperature_received_at"] = getattr(
+                self._device, "_temperature_received_at", None
+            )
+        return attributes
 
     @property
     def unique_id(self):

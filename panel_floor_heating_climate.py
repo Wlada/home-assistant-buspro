@@ -57,7 +57,11 @@ class BusproPanelFloorHeatingClimate(ClimateEntity):
 
     @property
     def should_poll(self):
-        return False
+        return True
+
+    async def async_update(self):
+        """Refresh actuator feedback, including expiry after lost responses."""
+        await self._device.read_actuator_status()
 
     @property
     def name(self):
@@ -163,6 +167,8 @@ class BusproPanelFloorHeatingClimate(ClimateEntity):
             "read_only": False,
             "control_path": "enviro_panel_confirmed",
             "actuator_open": self._device.actuator_is_on,
+            "actuator_outputs": self._device.actuator_outputs,
+            "actuator_feedback_source": self._device.actuator_feedback_source,
             "controller_mode": self._device.mode,
             "normal_temperature": self._device.normal_temperature,
             "day_temperature": self._device.day_temperature,

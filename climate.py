@@ -6,6 +6,7 @@ https://home-assistant.io/components/...
 """
 
 import logging
+from datetime import timedelta
 from typing import Optional, List
 
 import homeassistant.helpers.config_validation as cv
@@ -36,6 +37,7 @@ from .panel_ac_climate import BusproPanelACClimate
 from .panel_floor_heating_climate import BusproPanelFloorHeatingClimate
 
 _LOGGER = logging.getLogger(__name__)
+SCAN_INTERVAL = timedelta(seconds=30)
 
 PRESET_NONE = "none"
 PRESET_AWAY = "away"

@@ -5,7 +5,7 @@ import types
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 COMPONENT_ROOT = Path(__file__).resolve().parents[1]
@@ -460,6 +460,24 @@ class SensorTelegramTests(unittest.TestCase):
 
         self.assertEqual(sensor.temperature, 24)
         sensor._call_device_updated.assert_not_called()
+class TemperatureFreshnessTests(unittest.TestCase):
+    def test_only_a_valid_matching_temperature_response_refreshes_age(self):
+        sensor = make_sensor("temperature_channel")
+        sensor._channel_number = 3
+        sensor._temperature_received_at = 100
+        for payload in ([2, 25], [3], [3, None], [3, True], [3, 256], [3, -1]):
+            with patch.object(SensorModule, "time", return_value=200):
+                sensor._telegram_received_cb(SimpleNamespace(operate_code=OperateCode.ReadTemperatureResponse, payload=payload))
+            self.assertEqual(100, sensor._temperature_received_at)
+        with patch.object(SensorModule, "time", return_value=200):
+            sensor._telegram_received_cb(SimpleNamespace(operate_code=OperateCode.ReadTemperatureResponse, payload=[3, 25]))
+        self.assertEqual(200, sensor._temperature_received_at)
+        # An unchanged value from a new response is still a fresh measurement.
+        with patch.object(SensorModule, "time", return_value=300):
+            sensor._telegram_received_cb(SimpleNamespace(operate_code=OperateCode.ReadTemperatureResponse, payload=[3, 25]))
+        self.assertEqual(300, sensor._temperature_received_at)
+
+
 class SensorReadRequestTests(unittest.IsolatedAsyncioTestCase):
     async def test_motion_profile_uses_motion_status_request(self):
         created = []

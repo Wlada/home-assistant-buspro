@@ -133,6 +133,8 @@ class FakePanelFloorHeatingDevice:
         self.mode = None
         self.target_temperature = None
         self.actuator_is_on = None
+        self.actuator_outputs = {}
+        self.actuator_feedback_source = None
         self.normal_temperature = None
         self.day_temperature = None
         self.night_temperature = None
@@ -145,6 +147,9 @@ class FakePanelFloorHeatingDevice:
 
     async def read_status(self):
         self.commands.append(("read_status",))
+
+    async def read_actuator_status(self):
+        self.commands.append(("read_actuator_status",))
 
     async def set_on(self):
         self.commands.append(("set_on",))
@@ -331,6 +336,18 @@ class PanelFloorHeatingClimateEntityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.entity.hvac_mode, HVACMode.HEAT)
         self.assertEqual(self.entity.hvac_action, HVACAction.IDLE)
         self.assertEqual(self.entity.unique_id, "(10, 30, 5)")
+
+    async def test_periodic_update_only_reads_outputs(self):
+        self.assertTrue(self.entity.should_poll)
+        await self.entity.async_update()
+        self.assertEqual([('read_actuator_status',)], self.device.commands)
+        self.assertEqual(30, buspro_climate.SCAN_INTERVAL.total_seconds())
+
+    def test_enabled_without_output_feedback_does_not_report_heating(self):
+        self.device.is_on = True
+        self.assertIsNone(self.entity.hvac_action)
+        self.assertIsNone(self.entity.extra_state_attributes['actuator_open'])
+        self.assertEqual({}, self.entity.extra_state_attributes['actuator_outputs'])
 
 
 if __name__ == "__main__":
